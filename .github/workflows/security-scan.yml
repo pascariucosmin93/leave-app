@@ -48,7 +48,7 @@ jobs:
             /workspace
 
       - name: Build backend image for Trivy
-        run: docker build -t leave-app-backend-scan ./backend
+        run: docker build --pull --no-cache -t leave-app-backend-scan ./backend
 
       - name: Scan backend image with Trivy
         run: |
