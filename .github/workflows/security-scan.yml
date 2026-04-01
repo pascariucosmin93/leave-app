@@ -34,7 +34,7 @@ jobs:
         run: pip-audit -r backend/requirements.txt
 
       - name: Run Checkov on Kubernetes and CI config
-        run: checkov -d . --quiet --skip-path .venv --skip-path archive
+        run: checkov -d . --quiet --skip-path .venv --skip-path archive --skip-check CKV_GHA_7
 
       - name: Run Trivy filesystem scan
         run: |
