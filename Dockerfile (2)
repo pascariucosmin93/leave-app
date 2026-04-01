@@ -1,0 +1,49 @@
+map $http_user_agent $frontend_probe {
+  default 0;
+  ~*kube-probe/ 1;
+  ~*blackbox\ exporter/ 1;
+}
+
+map "$frontend_probe:$status" $frontend_accesslog_enabled {
+  default 1;
+  ~^1:2 0;
+  ~^1:3 0;
+}
+
+# Rate limit zones must be defined in http context (top-level), not inside server
+limit_req_zone $binary_remote_addr zone=rl_zone:10m rate=10r/s;
+limit_req_status 429;
+
+server {
+  listen 80;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Instruct crawlers to not index the site
+  add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+
+  # Basic bot blocklist (silent drop for known aggressive bots)
+  if ($http_user_agent ~* "(AhrefsBot|SemrushBot|MJ12bot|DotBot|PetalBot|SeznamBot|BLEXBot|Sogou|Baiduspider|YandexBot)") {
+    return 444;
+  }
+
+  # Hide successful Kubernetes probe requests from the access log.
+  access_log /var/log/nginx/access.log main if=$frontend_accesslog_enabled;
+
+  # Frontend (HTML/JS/CSS)
+  location / {
+    # Apply rate limit with small burst to absorb normal user bursts
+    limit_req zone=rl_zone burst=20 nodelay;
+    try_files $uri $uri/ =404;
+  }
+
+  # The API is exposed separately through Ingress; the frontend NGINX no longer proxies /api.
+
+  # Custom error page
+  error_page 404 /404.html;
+
+  location = /404.html {
+    internal;
+  }
+}

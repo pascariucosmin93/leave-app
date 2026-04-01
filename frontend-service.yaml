@@ -1,0 +1,16 @@
+{{- if .Values.backend.legacyService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ default (printf "%s-legacy" .Values.backend.name) .Values.backend.legacyService.name }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Values.backend.selectorLabel }}
+spec:
+  selector:
+    app: {{ .Values.backend.selectorLabel }}
+  ports:
+    - name: {{ .Values.backend.servicePortName | default "http" }}
+      port: {{ .Values.backend.port }}
+      targetPort: {{ .Values.backend.port }}
+{{- end }}

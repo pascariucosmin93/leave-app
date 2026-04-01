@@ -1,0 +1,122 @@
+# Employee Leave Management
+
+This repository contains an employee leave management application with a Flask backend, a static NGINX frontend, a Helm chart for Kubernetes deployment, and GitHub Actions workflows for CI/CD, monitoring, and security automation.
+
+## Stack
+
+- Backend: Flask + Gunicorn + MySQL
+- Frontend: HTML, CSS, JavaScript, NGINX
+- Deployment: Kubernetes + Helm
+- Observability: Prometheus, Grafana, Loki
+- Notifications: Discord webhook
+
+## Repository Structure
+
+```text
+.
+├── backend/            # Flask API, database bootstrap, metrics, notifications
+├── frontend/           # Static UI served by NGINX
+├── employee-leave-management-chart/     # Helm chart used for Kubernetes deployment
+├── docs/               # Deployment, scaling, monitoring, dashboards
+├── kube-security/      # Kubernetes security jobs and policies
+├── tests/              # Pytest suite
+└── .github/workflows/  # GitHub Actions workflows
+```
+
+## Local Development
+
+### Backend
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r backend/requirements.txt
+export UNIT_TESTING=1
+python backend/app.py
+```
+
+### Frontend
+
+You can serve the `frontend/` directory with any static web server, or build the provided NGINX image:
+
+```sh
+docker build -t employee-leave-frontend ./frontend
+docker run --rm -p 8080:80 employee-leave-frontend
+```
+
+## Testing
+
+Run the automated test suite from the repository root:
+
+```sh
+pytest
+```
+
+The test configuration enables `UNIT_TESTING=1` and avoids real MySQL or Discord calls.
+
+## Docker Images
+
+Build the images locally with:
+
+```sh
+docker build -t employee-leave-backend ./backend
+docker build -t employee-leave-frontend ./frontend
+```
+
+## Kubernetes Deployment
+
+The application is deployed with the Helm chart in `employee-leave-management-chart/`.
+
+```sh
+export IMAGE_TAG=$(git rev-parse --short HEAD)
+
+kubectl create namespace employee-leave --dry-run=client -o yaml | kubectl apply -f -
+
+helm upgrade --install employee-leave ./employee-leave-management-chart \
+  --namespace employee-leave \
+  --set backend.tag="${IMAGE_TAG}" \
+  --set frontend.tag="${IMAGE_TAG}"
+```
+
+More deployment details are available in `docs/DEPLOYMENT.md` and `docs/SCALING.md`.
+
+## GitHub Actions
+
+The repository is adapted for GitHub-hosted runners.
+
+- `ci.yml` runs on `push` and `pull_request`
+- `deploy.yml` runs on `main` and uses `ubuntu-latest`
+- `monitoring.yml` and `kube-security.yml` also use `ubuntu-latest`
+
+The workflows cover:
+
+- Python tests with `pytest`
+- Docker build validation
+- Backend and frontend image build/push
+- Trivy image scanning
+- Helm-based deployment to Kubernetes
+
+## Required Secrets For Deployment
+
+The deployment workflows expect these repository secrets:
+
+- `AZURE_REGISTRY`
+- `AZURE_REGISTRY_USERNAME`
+- `AZURE_REGISTRY_PASSWORD`
+- `KUBE_CONFIG`
+- `MYSQL_HOST`
+- `MYSQL_PORT`
+- `MYSQL_USER`
+- `MYSQL_PASSWORD`
+- `MYSQL_DATABASE`
+- `DISCORD_WEBHOOK`
+- `DOMAIN_NAME`
+- `GRAFANA_ADMIN_PASSWORD`
+
+## Notes
+
+- Project name: `employee-leave-management`
+- Kubernetes namespace and Helm release: `employee-leave`
+- Container images: `employee-leave-backend` and `employee-leave-frontend`
+- Database column names keep the existing schema to avoid a breaking migration.
+- User-facing text, API messages, and the main documentation are now in English.

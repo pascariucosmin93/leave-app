@@ -1,0 +1,29 @@
+# Scaling & High Availability
+
+## Current Configuration
+- `backend.autoscaling.enabled`: `true`
+- `backend.autoscaling.minReplicas`: `1`
+- `backend.autoscaling.maxReplicas`: `5`
+- `backend.autoscaling.targetCPUUtilizationPercentage`: `70`
+
+These values are defined in `employee-leave-management-chart/values.yaml` and used by `templates/backend-hpa.yaml` to create a `HorizontalPodAutoscaler` in the cluster. If you want permanent HA, set `minReplicas` to `2` and update `backend.replicaCount` to `2` for the first rollout.
+
+## Cluster Checks
+To inspect the HPA in Kubernetes, run:
+
+```sh
+kubectl get hpa -n employee-leave
+```
+
+The output shows how many pods are active (`CURRENT`) and how many are desired (`DESIRED`).
+
+To see the pods and the nodes they run on:
+
+```sh
+kubectl get pods -n employee-leave -o wide
+```
+
+## Recommended Adjustments
+1. **Minimum replicas:** set `values.yaml` → `backend.autoscaling.minReplicas: 2` for redundancy.
+2. **Anti-affinity:** add `podAntiAffinity` to the Deployment so replicas are spread across different nodes.
+3. **Alerts:** configure Prometheus alerts on `http_requests_total` and `http_request_duration_seconds` to detect overload situations.

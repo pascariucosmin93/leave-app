@@ -1,0 +1,145 @@
+namespace: employee-leave
+
+backend:
+  name: employee-leave-backend
+  image: cosminregistrydev.azurecr.io/employee-leave-backend
+  tag: ""
+  replicaCount: 2
+  port: 5000
+  servicePortName: http
+  secretName: employee-leave-secrets
+  selectorLabel: backend
+  env:
+    - name: PORT
+      value: "5000"
+    - name: GUNICORN_WORKERS
+      value: "2"
+    - name: GUNICORN_TIMEOUT
+      value: "60"
+    - name: METRICS_REFRESH_INTERVAL_SECONDS
+      value: "30"
+    - name: LEADER_ELECTION_ENABLED
+      value: "false"
+    - name: LEASE_NAME
+      value: ""
+    - name: LEASE_TTL_SECONDS
+      value: ""
+    - name: GUNICORN_WORKER_CLASS
+      value: "sync"
+    - name: GUNICORN_THREADS
+      value: "2"
+    - name: METRICS_PRIMARY
+      value: "1"
+    - name: DB_POOL_SIZE
+      value: "8"
+  resources: {}
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "500m"
+      memory: "256Mi"
+  probes:
+    startup:
+      httpGet:
+        path: /api/healthz
+        port: 5000
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 10
+      failureThreshold: 24
+    liveness:
+      httpGet:
+        path: /api/healthz
+        port: 5000
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 5
+    readiness:
+      httpGet:
+        path: /api/healthz
+        port: 5000
+      initialDelaySeconds: 40
+      periodSeconds: 10
+      timeoutSeconds: 10
+      failureThreshold: 6
+  serviceAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "5000"
+    prometheus.io/path: "/metrics"
+  serviceMonitor:
+    enabled: true
+    name: ""
+    namespace: monitoring
+    releaseLabel: monitoring
+    interval: 10s
+    path: /metrics
+    portName: ""
+    additionalLabels: {}
+  legacyService:
+    enabled: false
+    name: ""
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+  serviceAccountName: default
+
+frontend:
+  image: cosminregistrydev.azurecr.io/employee-leave-frontend
+  tag: ""
+  replicaCount: 2
+  port: 80
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  className: nginx
+  host: cosmin-employee-leave.bench.az.am-isd.com
+  tlsSecret: employee-leave-tls
+  issuer: letsencrypt-prod
+
+certManager:
+  clusterIssuerName: letsencrypt-prod  
+  email: pascariucosmin93@gmail.com
+  secretName: letsencrypt-staging
+
+imagePullSecrets:
+  - name: acr-secret
+
+# Prometheus (kube-prometheus-stack) wiring for external scrape configs
+kube-prometheus-stack:
+  prometheus:
+    prometheusSpec:
+      additionalScrapeConfigs:
+        name: external-scrape-config
+        key: additional-scrape-configs.yaml
+        optional: false
+
+# Blackbox SSL probe configuration
+blackbox:
+  enabled: true
+  namespace: monitoring
+  service:
+    name: blackbox-exporter-prometheus-blackbox-exporter
+    port: 9115
+    portName: http
+  module: http_2xx
+  targets:
+    - https://cosmin-employee-leave.bench.az.am-isd.com
+  scrapeInterval: 1m
+  releaseLabel: prometheus

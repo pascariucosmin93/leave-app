@@ -1,0 +1,74 @@
+{{ define "GeneralAlerts" -}}
+
+{{/* === Pending leave requests === */}}
+{{ if eq .CommonLabels.alertname "Pending leave requests" }}
+  {{ if eq .Status "firing" }}
+🚨 **Pending leave requests** 🚨  
+📋 Request count: {{ printf "%.0f" (index (index .Alerts 0).Values "A") }}
+  {{ else }}
+✅ There are no pending leave requests anymore
+  {{ end }}
+
+{{/* === Volume Space Usage === */}}
+{{ else if eq .CommonLabels.alertname "Volume Space Usage" }}
+  {{ range .Alerts }}
+    {{ if eq .Status "firing" }}
+⚠️ **High PV usage** ⚠️  
+- PV: {{ .Labels.persistentvolumeclaim }} (ns: {{ .Labels.namespace }})  
+- Usage: {{ printf "%v" (index .Values "A") }}%
+    {{ else }}
+✅ PV usage for {{ .Labels.persistentvolumeclaim }} is back below 80%
+    {{ end }}
+  {{ end }}
+
+{{/* === Disk Space Usage === */}}
+{{ else if eq .CommonLabels.alertname "Disk Space Usage" }}
+  {{ range .Alerts }}
+    {{ if eq .Status "firing" }}
+🚨 **Disk space almost full** 🚨  
+💾 Instance: {{ .Labels.instance }}  
+📊 Usage: {{ printf "%.1f" (index .Values "A") }}%  
+📍 Mountpoint: {{ .Labels.mountpoint }}  
+Recommendation: remove unnecessary files or expand the volume.
+    {{ else }}
+✅ Disk usage on {{ .Labels.instance }} is back below 80%.
+    {{ end }}
+  {{ end }}
+
+{{/* === Traffic === */}}
+{{ else if eq .CommonLabels.alertname "traffic" }}
+  {{ range .Alerts }}
+    {{ if eq .Status "firing" }}
+🚨 **High traffic detected** 🚨  
+🌐 IP: {{ .Labels.client_ip }}  
+📈 Request count (last 5m): {{ printf "%v" (index .Values "A") }}
+    {{ else }}
+✅ Traffic from IP {{ .Labels.client_ip }} is back to normal
+    {{ end }}
+  {{ end }}
+
+{{/* === MySQL Down === */}}
+{{ else if eq .CommonLabels.alertname "MySQL Uptime" }}
+  {{ range .Alerts }}
+    {{ if eq .Status "firing" }}
+🚨 **MySQL is DOWN** 🚨  
+💾 Instance: {{ .Labels.instance }}  
+❌ Prometheus is no longer receiving the `mysql_global_status_uptime` metric.
+    {{ else }}
+✅ MySQL is UP and working normally
+    {{ end }}
+  {{ end }}
+
+{{/* === Other alerts === */}}
+{{ else }}
+  {{ range .Alerts }}
+    {{ if eq .Status "firing" }}
+🚨 Alert: {{ .Labels.alertname }}  
+📄 Details: {{ or .Annotations.summary .Annotations.description "No description available" }}
+    {{ else }}
+✅ Alert resolved: {{ .Labels.alertname }}
+    {{ end }}
+  {{ end }}
+{{ end }}
+
+{{- end }}

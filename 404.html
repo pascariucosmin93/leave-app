@@ -1,0 +1,37 @@
+{{- if .Values.blackbox.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ printf "%s-blackbox" .Release.Name }}
+  namespace: {{ .Values.blackbox.namespace | default .Values.namespace }}
+  labels:
+    release: {{ .Values.blackbox.releaseLabel | default "prometheus" }}
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  jobLabel: blackbox-ssl
+  endpoints:
+    {{- $addr := printf "%s.%s.svc.cluster.local:%v" .Values.blackbox.service.name (.Values.blackbox.namespace | default .Values.namespace) .Values.blackbox.service.port }}
+    {{- range $t := .Values.blackbox.targets }}
+    - interval: {{ $.Values.blackbox.scrapeInterval | default "1m" }}
+      port: {{ $.Values.blackbox.service.portName | default "http" }}
+      path: /probe
+      params:
+        module:
+          - {{ $.Values.blackbox.module | default "http_2xx" }}
+        target:
+          - {{ $t | quote }}
+      scheme: http
+      relabelings:
+        - sourceLabels: [__param_target]
+          targetLabel: instance
+        - targetLabel: __address__
+          replacement: {{ $addr | quote }}
+    {{- end }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus-blackbox-exporter
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.blackbox.namespace | default .Values.namespace }}
+{{- end }}

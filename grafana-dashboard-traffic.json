@@ -1,0 +1,43 @@
+flowchart LR
+  subgraph Client
+    Browser[Browser]
+  end
+
+  subgraph Frontend
+    Nginx[Nginx (static + reverse proxy)]
+  end
+
+  subgraph Backend
+    API[Python API]
+    DB[(Database)]
+  end
+
+  subgraph Observability
+    Prom[Prometheus]
+    Graf[Grafana]
+  end
+
+  subgraph CI_CD[CI/CD]
+    GHA[GitHub Actions]
+    Helm[Helm Chart\nemployee-leave-management-chart]
+  end
+
+  subgraph Security[Security / Network]
+    Calico[Calico Admin SA]
+    Cron[Cleanup DDoS IPs\nCronJob]
+  end
+
+  Browser -->|HTTP| Nginx
+  Nginx -->|/api/*| API
+  API --> DB
+
+  API -->|/metrics| Prom
+  Prom --> Graf
+
+  GHA -->|Build & Push Images| Helm
+  Helm -->|Install/Upgrade| Nginx
+  Helm -->|Install/Upgrade| API
+
+  Calico -->|Network Policies| Nginx
+  Calico -->|Network Policies| API
+  Cron -->|Cleanup IPs| Calico

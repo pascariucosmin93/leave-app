@@ -1,0 +1,14 @@
+---
+# External scrape jobs for Prometheus (managed via Helm --set-file)
+# Keep this file under version control to easily recreate the cluster.
+
+- job_name: 'mysql-db-vm'
+  scrape_interval: 15s
+  static_configs:
+    - targets: ['10.1.1.75:9104']
+
+- job_name: 'node-db-vm'
+  scrape_interval: 15s
+  static_configs:
+    - targets: ['10.1.1.75:9100']
+

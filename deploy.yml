@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ddos-detector-loki
+  namespace: monitoring
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Allow
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  suspend: false
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: calico-admin
+          imagePullSecrets:
+            - name: regcred
+          containers:
+            - name: ddos-detector
+              image: cosminregistrydev.azurecr.io/kube-security-ddos:1b262e
+              imagePullPolicy: IfNotPresent
+              args:
+                - --loki-url=http://loki.monitoring.svc:3100
+                - --loki-namespace=ingress-nginx
+                - --duration=120
+                - --threshold=500
+                - --filter-host=cosmin-employee-leave.bench.az.am-isd.com
+                - --apply
+                - --discord-webhook=https://discord.com/api/webhooks/1427216317789765663/JXiAca8FiNTGtRWhv62Me7TDptZKwBUYkmESlKBCC8FdHz0VIH2xg3HSX05JSMBrbfeB
+          restartPolicy: OnFailure

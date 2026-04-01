@@ -1,0 +1,65 @@
+# ===========================================
+# ServiceAccount + RBAC pentru Calico Admin
+# ===========================================
+
+# --- ServiceAccount ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: calico-admin
+  namespace: monitoring
+  labels:
+    app: calico
+    role: admin
+  annotations:
+    description: "Folosit de joburi automate (ex: ddos-detector-cleanup) pentru operarea Calico."
+
+---
+# --- ClusterRole ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: calico-admin-role
+  labels:
+    app: calico
+    role: admin
+rules:
+  # 🔹 Permisiuni globale pe resursele Calico CRD
+  - apiGroups: ["crd.projectcalico.org"]
+    resources:
+      - globalnetworkpolicies
+      - networkpolicies
+      - globalnetworksets
+      - hostendpoints
+      - ippools
+      - ipamblocks
+      - ipamhandles
+    verbs: ["get", "list", "create", "update", "delete", "watch"]
+
+  # 🔹 Permisiuni pentru joburile de mentenanță
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "create", "delete"]
+
+  # 🔹 Permisiuni de citire pe resursele de bază Kubernetes
+  - apiGroups: [""]
+    resources: ["pods", "services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+
+---
+# --- ClusterRoleBinding ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: calico-admin-binding
+  labels:
+    app: calico
+    role: admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: calico-admin-role
+subjects:
+  - kind: ServiceAccount
+    name: calico-admin
+    namespace: monitoring

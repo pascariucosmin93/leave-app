@@ -1,0 +1,257 @@
+{
+  "id": null,
+  "uid": "employee-leave-monitoring",
+  "title": "Leave - Observability",
+  "tags": ["employee-leave", "production"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "editable": true,
+  "gnetId": null,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Sănătate Generală",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+      "collapsed": false,
+      "id": 1,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Utilizatori înregistrați",
+      "id": 2,
+      "gridPos": {"x": 0, "y": 1, "w": 6, "h": 5},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(users_total)", "refId": "A"}],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Cereri pending",
+      "id": 3,
+      "gridPos": {"x": 6, "y": 1, "w": 6, "h": 5},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(pending_leaves_total)", "refId": "A"}],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Logări reușite (24h)",
+      "id": 4,
+      "gridPos": {"x": 12, "y": 1, "w": 6, "h": 5},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(logins_success_total[24h]))", "refId": "A"}],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Conexiuni DB active",
+      "id": 5,
+      "gridPos": {"x": 18, "y": 1, "w": 6, "h": 5},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(db_connections_active)", "refId": "A"}],
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
+        "colorMode": "value"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Trafic HTTP",
+      "gridPos": {"x": 0, "y": 6, "w": 24, "h": 1},
+      "collapsed": false,
+      "id": 6,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Rata requesturilor",
+      "id": 7,
+      "gridPos": {"x": 0, "y": 7, "w": 16, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum by (method) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "req/s"}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Rata erorilor (%)",
+      "id": 8,
+      "gridPos": {"x": 16, "y": 7, "w": 8, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "100 * sum(rate(http_requests_total{status=~\"4..|5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+          "legendFormat": "error %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "options": {"legend": {"displayMode": "hidden"}}
+    },
+    {
+      "type": "bargauge",
+      "title": "Top endpoint-uri (5m)",
+      "id": 9,
+      "gridPos": {"x": 0, "y": 15, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "topk(5, sum by (endpoint) (rate(http_requests_total[5m])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p95 per endpoint",
+      "id": 10,
+      "gridPos": {"x": 12, "y": 15, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "type": "row",
+      "title": "Bază de date",
+      "gridPos": {"x": 0, "y": 22, "w": 24, "h": 1},
+      "collapsed": false,
+      "id": 11,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Latenta interogări p95",
+      "id": 12,
+      "gridPos": {"x": 0, "y": 23, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(db_query_latency_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Erori SQL",
+      "id": 13,
+      "gridPos": {"x": 12, "y": 23, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(increase(db_query_errors_total[5m]))",
+          "legendFormat": "erori",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Indicatori business",
+      "gridPos": {"x": 0, "y": 30, "w": 24, "h": 1},
+      "collapsed": false,
+      "id": 14,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Cereri depuse (1h)",
+      "id": 15,
+      "gridPos": {"x": 0, "y": 31, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(increase(leaves_submitted_total[$__range]))", "legendFormat": "depuse", "refId": "A"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Aprobate vs respinse",
+      "id": 16,
+      "gridPos": {"x": 12, "y": 31, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(increase(leaves_approved_total[$__range]))", "legendFormat": "aprobate", "refId": "A"},
+        {"expr": "sum(increase(leaves_rejected_total[$__range]))", "legendFormat": "respinse", "refId": "B"}
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Pending pe utilizator",
+      "id": 17,
+      "gridPos": {"x": 0, "y": 38, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "max by (user_id, email) (pending_leaves_by_user)",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "options": {"showHeader": true}
+    },
+    {
+      "type": "timeseries",
+      "title": "Logări eșuate (1h)",
+      "id": 18,
+      "gridPos": {"x": 12, "y": 38, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(increase(logins_failed_total[$__range]))", "legendFormat": "logări eșuate", "refId": "A"},
+        {"expr": "sum(increase(auth_errors_total[$__range]))", "legendFormat": "erori auth", "refId": "B"}
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Integrări",
+      "gridPos": {"x": 0, "y": 46, "w": 24, "h": 1},
+      "collapsed": false,
+      "id": 19,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Fail rate Discord",
+      "id": 20,
+      "gridPos": {"x": 0, "y": 47, "w": 12, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(increase(discord_webhook_failures_total[5m]))", "legendFormat": "fail", "refId": "A"}
+      ]
+    }
+  ],
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {}
+}

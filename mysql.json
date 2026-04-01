@@ -1,0 +1,125 @@
+{
+  "id": null,
+  "uid": "employee-leave-traffic-overview",
+  "title": "Leave - Traffic & Metrics",
+  "tags": ["employee-leave", "traffic", "prometheus"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "editable": true,
+  "gnetId": null,
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "time": {"from": "now-24h", "to": "now"},
+  "timepicker": {},
+  "panels": [
+    {"type": "row", "title": "Rezumat", "id": 1, "collapsed": false, "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1}, "panels": []},
+    {
+      "type": "stat",
+      "title": "Pending (acum)",
+      "id": 2,
+      "gridPos": {"x": 0, "y": 1, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "pending_leaves_total", "refId": "A"}],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}}
+    },
+    {
+      "type": "stat",
+      "title": "Aprobate (interval)",
+      "id": 3,
+      "gridPos": {"x": 4, "y": 1, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(leaves_approved_total[$__range]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Respinse (interval)",
+      "id": 4,
+      "gridPos": {"x": 8, "y": 1, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(leaves_rejected_total[$__range]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Trimise (interval)",
+      "id": 5,
+      "gridPos": {"x": 12, "y": 1, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum(increase(leaves_submitted_total[$__range]))", "refId": "A"}]
+    },
+    {
+      "type": "stat",
+      "title": "Utilizatori totali",
+      "id": 6,
+      "gridPos": {"x": 16, "y": 1, "w": 4, "h": 4},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "users_total", "refId": "A"}]
+    },
+    {
+      "type": "timeseries",
+      "title": "Pending over time",
+      "id": 7,
+      "gridPos": {"x": 0, "y": 5, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "pending_leaves_total", "legendFormat": "pending", "refId": "A"}],
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Aprobari/Respingere (rata)",
+      "id": 8,
+      "gridPos": {"x": 12, "y": 5, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(rate(leaves_approved_total[5m]))", "legendFormat": "aprobate/s", "refId": "A"},
+        {"expr": "sum(rate(leaves_rejected_total[5m]))", "legendFormat": "respinse/s", "refId": "B"}
+      ]
+    },
+    {"type": "row", "title": "HTTP Traffic", "id": 9, "collapsed": false, "gridPos": {"x": 0, "y": 13, "w": 24, "h": 1}, "panels": []},
+    {
+      "type": "timeseries",
+      "title": "Request-uri pe endpoint",
+      "id": 10,
+      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum by (endpoint) (rate(http_requests_total[5m]))", "legendFormat": "{{endpoint}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "1/s"}, "overrides": []}
+    },
+    {
+      "type": "timeseries",
+      "title": "Latență per endpoint",
+      "id": 11,
+      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "histogram_quantile(0.9, sum by (le, endpoint) (rate(http_request_duration_seconds_bucket[5m])))", "legendFormat": "p90 {{endpoint}}", "refId": "A"}
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []}
+    },
+    {"type": "row", "title": "Erori & Autentificare", "id": 12, "collapsed": false, "gridPos": {"x": 0, "y": 22, "w": 24, "h": 1}, "panels": []},
+    {
+      "type": "timeseries",
+      "title": "Autentificari reusite vs esuate",
+      "id": 13,
+      "gridPos": {"x": 0, "y": 23, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(increase(logins_success_total[$__range]))", "legendFormat": "success", "refId": "A"},
+        {"expr": "sum(increase(logins_failed_total[$__range] ))", "legendFormat": "failed", "refId": "B"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Discord webhook failures (interval)",
+      "id": 14,
+      "gridPos": {"x": 12, "y": 23, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"expr": "sum(increase(discord_webhook_failures_total[$__range]))", "refId": "A"}
+      ]
+    }
+  ]
+}
