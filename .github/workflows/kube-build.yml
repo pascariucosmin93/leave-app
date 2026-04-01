@@ -93,9 +93,10 @@ jobs:
           git clone "$AUTH_REPO" "$WORKDIR/gitops"
           cd "$WORKDIR/gitops"
 
-          sed -i "s|^  image: \".*\"|  image: \"$IMAGE_VERSION\"|" k8s/chart/values.yaml
-          sed -i "s|^  promote: \".*\"|  promote: \"$PROMOTE_VERSION\"|" k8s/chart/values.yaml
-          sed -i "s|^    tag: \".*\"|    tag: \"$IMAGE_VERSION\"|" k8s/chart/values.yaml
+          sed -i '/^versions:/,/^[^[:space:]]/ s|^  image: ".*"|  image: "'"$IMAGE_VERSION"'"|' k8s/chart/values.yaml
+          sed -i '/^versions:/,/^[^[:space:]]/ s|^  promote: ".*"|  promote: "'"$PROMOTE_VERSION"'"|' k8s/chart/values.yaml
+          sed -i '/^backend:/,/^[^[:space:]]/ s|^  tag: ".*"|  tag: "'"$IMAGE_VERSION"'"|' k8s/chart/values.yaml
+          sed -i '/^frontend:/,/^[^[:space:]]/ s|^  tag: ".*"|  tag: "'"$IMAGE_VERSION"'"|' k8s/chart/values.yaml
 
           if git diff --quiet; then
             echo "GitOps repo already up-to-date"
