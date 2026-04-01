@@ -1,9 +1,7 @@
 import importlib
-import os
 from datetime import timedelta
 
 import pytest
-import sqlalchemy as sa
 from sqlalchemy.exc import OperationalError
 
 import database
