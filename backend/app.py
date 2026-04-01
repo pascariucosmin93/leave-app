@@ -1,11 +1,14 @@
-import os
 import secrets
-from dataclasses import dataclass, field
 from datetime import datetime
 
+import os
+import sqlalchemy as sa
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from database import AppSetting, LeaveRequest, User, check_database_health, init_database, session_scope, store_reset_token, consume_reset_token
 
 
 DEPARTMENTS = {
@@ -36,6 +39,10 @@ LEAVE_ALLOWANCES = {
 
 REQUEST_COUNTER = Counter("employee_leave_http_requests_total", "HTTP requests", ["method", "path"])
 
+app = Flask(__name__)
+CORS(app)
+init_database()
+
 
 def _days_between(start: str, end: str) -> int:
     start_date = datetime.strptime(start, "%Y-%m-%d").date()
@@ -43,40 +50,30 @@ def _days_between(start: str, end: str) -> int:
     return (end_date - start_date).days + 1
 
 
-@dataclass
-class MemoryStore:
-    users: dict[int, dict] = field(default_factory=dict)
-    users_by_email: dict[str, int] = field(default_factory=dict)
-    leaves: list[dict] = field(default_factory=list)
-    reset_tokens: dict[str, str] = field(default_factory=dict)
-    next_user_id: int = 1
-    next_leave_id: int = 1
-    discord_notifications_enabled: bool = True
-
-    def create_user(self, name: str, email: str, password: str, department: str) -> dict:
-        user = {
-            "user_id": self.next_user_id,
-            "name": name,
-            "email": email,
-            "password": password,
-            "department": department,
-            "admin": False,
-        }
-        self.users[self.next_user_id] = user
-        self.users_by_email[email.lower()] = self.next_user_id
-        self.next_user_id += 1
-        return user
-
-    def get_user_by_email(self, email: str) -> dict | None:
-        user_id = self.users_by_email.get(email.lower())
-        if not user_id:
-            return None
-        return self.users[user_id]
+def _leave_to_dict(leave: LeaveRequest) -> dict:
+    return {
+        "id": leave.id,
+        "user_id": leave.user_id,
+        "name": leave.user.name,
+        "email": leave.user.email,
+        "department": leave.user.department,
+        "start": leave.start_date.isoformat(),
+        "end": leave.end_date.isoformat(),
+        "days": leave.days,
+        "reason": leave.reason,
+        "type": leave.leave_type,
+        "status": leave.status,
+        "created_at": leave.created_at.isoformat() + "Z",
+    }
 
 
-store = MemoryStore()
-app = Flask(__name__)
-CORS(app)
+def _get_discord_enabled(session) -> bool:
+    setting = session.get(AppSetting, "discord_notifications_enabled")
+    if setting is None:
+        setting = AppSetting(key="discord_notifications_enabled", value="true")
+        session.add(setting)
+        session.flush()
+    return setting.value.lower() == "true"
 
 
 @app.before_request
@@ -91,14 +88,14 @@ def metrics():
 
 @app.get("/api/healthz")
 def healthz():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok" if check_database_health() else "degraded"})
 
 
 @app.post("/api/register")
 def register():
     payload = request.get_json(silent=True) or {}
     name = payload.get("name", "").strip()
-    email = payload.get("email", "").strip()
+    email = payload.get("email", "").strip().lower()
     password = payload.get("password", "")
     department = payload.get("department", "").strip()
 
@@ -106,11 +103,22 @@ def register():
         return jsonify({"error": "Missing required fields"}), 400
     if department not in DEPARTMENTS:
         return jsonify({"error": "Invalid department"}), 400
-    if store.get_user_by_email(email):
-        return jsonify({"error": "User already exists"}), 409
 
-    user = store.create_user(name, email, password, department)
-    return jsonify({"msg": "registered", "user_id": user["user_id"]}), 201
+    with session_scope() as session:
+        existing = session.execute(sa.select(User).where(User.email == email)).scalar_one_or_none()
+        if existing:
+            return jsonify({"error": "User already exists"}), 409
+
+        user = User(
+            name=name,
+            email=email,
+            password_hash=generate_password_hash(password),
+            department=department,
+            is_admin=False,
+        )
+        session.add(user)
+        session.flush()
+        return jsonify({"msg": "registered", "user_id": user.id}), 201
 
 
 @app.post("/api/login")
@@ -133,47 +141,54 @@ def login():
             }
         )
 
-    user = store.get_user_by_email(email)
-    if not user or user["password"] != password:
-        return jsonify({"error": "Invalid login"}), 401
+    with session_scope() as session:
+        user = session.execute(sa.select(User).where(User.email == email.lower())).scalar_one_or_none()
+        if user is None or not check_password_hash(user.password_hash, password):
+            return jsonify({"error": "Invalid login"}), 401
 
-    return jsonify(
-        {
-            "msg": "ok",
-            "admin": False,
-            "user_id": user["user_id"],
-            "name": user["name"],
-            "email": user["email"],
-            "department": user["department"],
-        }
-    )
+        return jsonify(
+            {
+                "msg": "ok",
+                "admin": bool(user.is_admin),
+                "user_id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "department": user.department,
+            }
+        )
 
 
 @app.get("/api/balance/<int:user_id>")
 def balance(user_id: int):
-    allowances = {}
-    for reason, meta in LEAVE_ALLOWANCES.items():
-        used = sum(
-            leave["days"]
-            for leave in store.leaves
-            if leave["user_id"] == user_id and leave["reason"] == reason and leave["status"] == "approved"
-        )
-        total = meta["allocation"]
-        allowances[reason] = {"total": total, "remaining": max(total - used, 0)}
+    with session_scope() as session:
+        allowances = {}
+        for reason, meta in LEAVE_ALLOWANCES.items():
+            used = session.execute(
+                sa.select(sa.func.coalesce(sa.func.sum(LeaveRequest.days), 0)).where(
+                    LeaveRequest.user_id == user_id,
+                    LeaveRequest.reason == reason,
+                    LeaveRequest.status == "approved",
+                )
+            ).scalar_one()
+            total = meta["allocation"]
+            allowances[reason] = {"total": total, "remaining": max(total - used, 0)}
 
-    return jsonify(
-        {
-            "normal_days": allowances["Annual leave"]["remaining"],
-            "special_days": sum(value["remaining"] for key, value in allowances.items() if key != "Annual leave"),
-            "allowances": allowances,
-        }
-    )
+        return jsonify(
+            {
+                "normal_days": allowances["Annual leave"]["remaining"],
+                "special_days": sum(value["remaining"] for key, value in allowances.items() if key != "Annual leave"),
+                "allowances": allowances,
+            }
+        )
 
 
 @app.get("/api/leaves/<int:user_id>")
 def user_leaves(user_id: int):
-    items = [leave for leave in store.leaves if leave["user_id"] == user_id]
-    return jsonify(items)
+    with session_scope() as session:
+        items = session.execute(
+            sa.select(LeaveRequest).where(LeaveRequest.user_id == user_id).order_by(LeaveRequest.created_at.desc())
+        ).scalars().all()
+        return jsonify([_leave_to_dict(item) for item in items])
 
 
 @app.post("/api/leave")
@@ -193,6 +208,8 @@ def create_leave():
         return jsonify({"error": "Missing required fields"}), 400
 
     try:
+        start_date = datetime.strptime(start, "%Y-%m-%d").date()
+        end_date = datetime.strptime(end, "%Y-%m-%d").date()
         days = _days_between(start, end)
     except ValueError:
         return jsonify({"error": "Invalid leave date range"}), 400
@@ -200,39 +217,43 @@ def create_leave():
     if days <= 0:
         return jsonify({"error": "Invalid leave date range"}), 400
 
-    leave = {
-        "id": store.next_leave_id,
-        "user_id": user_id,
-        "name": store.users.get(user_id, {}).get("name", "Unknown"),
-        "email": store.users.get(user_id, {}).get("email", ""),
-        "department": store.users.get(user_id, {}).get("department", "General"),
-        "start": start,
-        "end": end,
-        "days": days,
-        "reason": reason,
-        "type": leave_type,
-        "status": "pending",
-        "created_at": datetime.utcnow().isoformat() + "Z",
-    }
-    store.next_leave_id += 1
-    store.leaves.append(leave)
-    return jsonify({"msg": "Request submitted!", "id": leave["id"]}), 201
+    with session_scope() as session:
+        user = session.get(User, user_id)
+        if user is None:
+            return jsonify({"error": "User not found"}), 404
+
+        leave = LeaveRequest(
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            days=days,
+            reason=reason,
+            leave_type=leave_type,
+            status="pending",
+        )
+        session.add(leave)
+        session.flush()
+        return jsonify({"msg": "Request submitted!", "id": leave.id}), 201
 
 
 @app.get("/api/admin/leaves")
 def admin_leaves():
-    return jsonify(store.leaves)
+    with session_scope() as session:
+        items = session.execute(sa.select(LeaveRequest).order_by(LeaveRequest.created_at.desc())).scalars().all()
+        return jsonify([_leave_to_dict(item) for item in items])
 
 
 @app.post("/api/admin/leaves/<int:leave_id>/<action>")
 def admin_update_leave(leave_id: int, action: str):
     if action not in {"approved", "rejected"}:
         return jsonify({"error": "Invalid action"}), 400
-    for leave in store.leaves:
-        if leave["id"] == leave_id:
-            leave["status"] = action
-            return jsonify({"msg": "updated"})
-    return jsonify({"error": "Leave not found"}), 404
+
+    with session_scope() as session:
+        leave = session.get(LeaveRequest, leave_id)
+        if leave is None:
+            return jsonify({"error": "Leave not found"}), 404
+        leave.status = action
+        return jsonify({"msg": "updated"})
 
 
 @app.post("/api/admin/leaves/bulk")
@@ -242,43 +263,52 @@ def admin_bulk_update():
     if action not in {"approved", "rejected"}:
         return jsonify({"error": "Invalid action"}), 400
 
-    processed = 0
-    for leave in store.leaves:
-        if leave["status"] == "pending":
-            leave["status"] = action
-            processed += 1
-    return jsonify({"msg": f"{processed} requests updated.", "processed": processed})
+    with session_scope() as session:
+        items = session.execute(sa.select(LeaveRequest).where(LeaveRequest.status == "pending")).scalars().all()
+        for leave in items:
+            leave.status = action
+        return jsonify({"msg": f"{len(items)} requests updated.", "processed": len(items)})
 
 
 @app.get("/api/admin/settings/discord")
+@app.get("/api/admin/notifications/discord")
 def admin_get_discord_setting():
-    return jsonify({"enabled": store.discord_notifications_enabled})
+    with session_scope() as session:
+        return jsonify({"enabled": _get_discord_enabled(session)})
 
 
 @app.post("/api/admin/settings/discord")
+@app.post("/api/admin/notifications/discord")
 def admin_set_discord_setting():
     payload = request.get_json(silent=True) or {}
-    store.discord_notifications_enabled = bool(payload.get("enabled"))
-    return jsonify({"enabled": store.discord_notifications_enabled})
+    enabled = bool(payload.get("enabled"))
+    with session_scope() as session:
+        setting = session.get(AppSetting, "discord_notifications_enabled")
+        if setting is None:
+            setting = AppSetting(key="discord_notifications_enabled", value="true")
+            session.add(setting)
+        setting.value = "true" if enabled else "false"
+        return jsonify({"enabled": enabled})
 
 
 @app.post("/api/password/reset/request")
 def password_reset_request():
     payload = request.get_json(silent=True) or {}
-    email = payload.get("email", "").strip()
+    email = payload.get("email", "").strip().lower()
     return_link = bool(payload.get("return_link"))
-    user = store.get_user_by_email(email)
 
-    if not user:
-        return jsonify({"msg": "If the email exists, you will receive a link on Discord."})
+    with session_scope() as session:
+        user = session.execute(sa.select(User).where(User.email == email)).scalar_one_or_none()
+        if user is None:
+            return jsonify({"msg": "If the email exists, you will receive a link on Discord."})
 
-    token = secrets.token_urlsafe(24)
-    store.reset_tokens[token] = user["email"]
-    response = {"msg": "Reset request accepted"}
-    if return_link:
-        base_url = os.getenv("RESET_PASSWORD_BASE_URL", "http://localhost/reset.html")
-        response["reset_link"] = f"{base_url}?token={token}"
-    return jsonify(response)
+        token = secrets.token_urlsafe(24)
+        store_reset_token(user.id, token)
+        response = {"msg": "Reset request accepted"}
+        if return_link:
+            base_url = os.getenv("RESET_PASSWORD_BASE_URL", "http://localhost/reset.html")
+            response["reset_link"] = f"{base_url}?token={token}"
+        return jsonify(response)
 
 
 @app.post("/api/password/reset/confirm")
@@ -286,18 +316,19 @@ def password_reset_confirm():
     payload = request.get_json(silent=True) or {}
     token = payload.get("token")
     password = payload.get("password")
-    email = store.reset_tokens.pop(token, None)
-    if not email:
+
+    record = consume_reset_token(token)
+    if record is None:
         return jsonify({"error": "Invalid or expired token"}), 400
     if not password or len(password) < 6:
         return jsonify({"error": "Password must be at least 6 characters long"}), 400
 
-    user = store.get_user_by_email(email)
-    if user:
-        user["password"] = password
+    with session_scope() as session:
+        user = session.get(User, record.user_id)
+        if user:
+            user.password_hash = generate_password_hash(password)
     return jsonify({"msg": "Password reset completed"})
 
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=bool(os.getenv("UNIT_TESTING")))
-

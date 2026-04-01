@@ -11,22 +11,32 @@ if str(BACKEND_ROOT) not in sys.path:
 
 os.environ.setdefault("UNIT_TESTING", "1")
 os.environ.setdefault("DISCORD_WEBHOOK", "")
-os.environ.setdefault("MYSQL_HOST", "mock")
-os.environ.setdefault("MYSQL_USER", "mock")
-os.environ.setdefault("MYSQL_PASSWORD", "mock")
+os.environ.setdefault("DATABASE_URL", f"sqlite:///{PROJECT_ROOT / 'test.db'}")
+os.environ.setdefault("BOOTSTRAP_DB", "false")
 
 
 @pytest.fixture
 def client():
-    from app import app, store
+    from app import app
+    from database import AppSetting, Base, engine, session_scope
 
-    store.users.clear()
-    store.users_by_email.clear()
-    store.leaves.clear()
-    store.reset_tokens.clear()
-    store.next_user_id = 1
-    store.next_leave_id = 1
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    with session_scope() as session:
+        session.add(AppSetting(key="discord_notifications_enabled", value="true"))
     app.config.update(TESTING=True)
     with app.test_client() as client:
         yield client
 
+
+@pytest.fixture
+def registered_user(client):
+    payload = {
+        "name": "Tester",
+        "email": "tester@example.com",
+        "password": "secret123",
+        "department": "Finance",
+    }
+    response = client.post("/api/register", json=payload)
+    data = response.get_json()
+    return {"response": response, "payload": payload, "user_id": data["user_id"]}
