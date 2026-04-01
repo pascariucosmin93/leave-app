@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      image_version:
+        description: Image version in x.x.x format
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,15 +26,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate version format
+      - name: Resolve release version
+        id: version
         run: |
-          IMAGE_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IMAGE_VERSION="${{ inputs.image_version }}"
+          else
+            IMAGE_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
           echo "$IMAGE_VERSION" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$'
+          echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Compute promote version
         id: versions
         run: |
-          IMAGE_VERSION="${GITHUB_REF_NAME#v}"
+          IMAGE_VERSION="${{ steps.version.outputs.image_version }}"
           PROMOTE_VERSION="$(echo "$IMAGE_VERSION" | cut -d. -f1,2)"
           echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "promote_version=$PROMOTE_VERSION" >> "$GITHUB_OUTPUT"
