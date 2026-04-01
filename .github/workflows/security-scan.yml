@@ -34,20 +34,26 @@ jobs:
         run: checkov -d . --quiet --skip-path .venv --skip-path archive
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          exit-code: '1'
+        run: |
+          docker run --rm \
+            -v "$PWD:/workspace" \
+            -v "$HOME/.cache/trivy:/root/.cache/" \
+            docker.io/aquasec/trivy:0.65.0 \
+            fs \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            /workspace
 
       - name: Build backend image for Trivy
         run: docker build -t leave-app-backend-scan ./backend
 
       - name: Scan backend image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: leave-app-backend-scan
-          scan-type: image
-          severity: CRITICAL,HIGH
-          exit-code: '1'
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$HOME/.cache/trivy:/root/.cache/" \
+            docker.io/aquasec/trivy:0.65.0 \
+            image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            leave-app-backend-scan
