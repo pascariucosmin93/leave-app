@@ -1,0 +1,99 @@
+name: Build and Prepare GitOps
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_version:
+        description: Image version in x.x.x format
+        required: true
+        default: "1.0.0"
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE_NAME: leave-app/backend
+  FRONTEND_IMAGE_NAME: leave-app/frontend
+  GITOPS_REPO: https://github.com/pascariucosmin93/gitops-leave-app.git
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate version format
+        run: |
+          IMAGE_VERSION="${{ github.event.inputs.image_version }}"
+          echo "$IMAGE_VERSION" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$'
+
+      - name: Compute promote version
+        id: versions
+        run: |
+          IMAGE_VERSION="${{ github.event.inputs.image_version }}"
+          PROMOTE_VERSION="$(echo "$IMAGE_VERSION" | cut -d. -f1,2)"
+          echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "promote_version=$PROMOTE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image names
+        id: img
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "backend=ghcr.io/$OWNER/employee-leave-backend" >> "$GITHUB_OUTPUT"
+          echo "frontend=ghcr.io/$OWNER/employee-leave-frontend" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend
+        run: |
+          docker build \
+            -t ${{ steps.img.outputs.backend }}:${{ steps.versions.outputs.image_version }} \
+            ./backend
+          docker push ${{ steps.img.outputs.backend }}:${{ steps.versions.outputs.image_version }}
+
+      - name: Build and push frontend
+        run: |
+          docker build \
+            -t ${{ steps.img.outputs.frontend }}:${{ steps.versions.outputs.image_version }} \
+            ./frontend
+          docker push ${{ steps.img.outputs.frontend }}:${{ steps.versions.outputs.image_version }}
+
+      - name: Update GitOps repo
+        env:
+          IMAGE_VERSION: ${{ steps.versions.outputs.image_version }}
+          PROMOTE_VERSION: ${{ steps.versions.outputs.promote_version }}
+          GITOPS_PUSH_USER: ${{ secrets.GITOPS_PUSH_USER }}
+          GITOPS_PUSH_TOKEN: ${{ secrets.GITOPS_PUSH_TOKEN }}
+        run: |
+          set -e
+          if [ -z "${GITOPS_PUSH_USER:-}" ] || [ -z "${GITOPS_PUSH_TOKEN:-}" ]; then
+            echo "GITOPS_PUSH_USER / GITOPS_PUSH_TOKEN not set; skipping GitOps update."
+            exit 0
+          fi
+
+          AUTH_REPO=$(echo "$GITOPS_REPO" | sed "s#https://#https://${GITOPS_PUSH_USER}:${GITOPS_PUSH_TOKEN}@#")
+          WORKDIR=$(mktemp -d)
+          git clone "$AUTH_REPO" "$WORKDIR/gitops"
+          cd "$WORKDIR/gitops"
+
+          sed -i "s|^  image: \".*\"|  image: \"$IMAGE_VERSION\"|" k8s/chart/values.yaml
+          sed -i "s|^  promote: \".*\"|  promote: \"$PROMOTE_VERSION\"|" k8s/chart/values.yaml
+          sed -i "s|^    tag: \".*\"|    tag: \"$IMAGE_VERSION\"|" k8s/chart/values.yaml
+
+          if git diff --quiet; then
+            echo "GitOps repo already up-to-date"
+            exit 0
+          fi
+
+          git config user.name "Leave App CI Bot"
+          git config user.email "leave-app-ci-bot@local"
+          git add k8s/chart/values.yaml
+          git commit -m "chore(gitops): promote ${PROMOTE_VERSION} from image ${IMAGE_VERSION}"
+          git push origin main
+

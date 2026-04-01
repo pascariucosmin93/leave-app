@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: leave-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/pascariucosmin93/gitops-leave-app.git
+    targetRevision: main
+    path: k8s/chart
+    helm:
+      releaseName: employee-leave
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: employee-leave
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
