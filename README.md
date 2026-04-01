@@ -22,6 +22,12 @@ archive/             # Original flat layout kept for reference
 
 The workflow computes `PROMOTE_VERSION` from `IMAGE_VERSION` by keeping only the major and minor components.
 
+## Exposure
+
+- The application is exposed through a Kubernetes `LoadBalancer` service.
+- The cluster advertises external service IPs through BGP.
+- NGINX in the frontend container proxies `/api/*` to the backend service inside the cluster.
+
 ## GitOps Flow
 
 1. Build backend and frontend images with version `x.x.x`
@@ -35,4 +41,3 @@ The workflow computes `PROMOTE_VERSION` from `IMAGE_VERSION` by keeping only the
 - I did not push anything.
 - The original root files were moved to `archive/original-flat-layout/`.
 - The GitOps chart now lives in `/Users/cosmin.pascariu/Desktop/gitops-leave-app`.
-

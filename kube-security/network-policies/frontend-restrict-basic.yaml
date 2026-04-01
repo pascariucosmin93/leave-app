@@ -11,12 +11,8 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # 🔹 Permite trafic DOAR de la Ingress-NGINX (utilizatorii externi)
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
+    # Allow external traffic directly to the frontend LoadBalancer service.
+    - ports:
         - protocol: TCP
           port: 80
 
