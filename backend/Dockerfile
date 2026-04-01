@@ -7,13 +7,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apk add --no-cache build-base libffi-dev
+RUN apk upgrade --no-cache \
+    && apk add --no-cache build-base libffi-dev
 
 COPY requirements.txt ./
 RUN python -m venv "$VIRTUAL_ENV" \
     && pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -r requirements.txt \
-    && pip uninstall -y pip setuptools wheel
+    && pip uninstall -y pip setuptools wheel \
+    && find "$VIRTUAL_ENV" \( -name 'pip*dist-info' -o -name 'setuptools*' -o -name 'wheel*' -o -name 'jaraco.*' \) -exec rm -rf {} +
 
 FROM python:3.11-alpine
 
@@ -24,7 +26,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN addgroup -S app && adduser -S -G app app
+RUN apk upgrade --no-cache \
+    && addgroup -S app && adduser -S -G app app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY . .
