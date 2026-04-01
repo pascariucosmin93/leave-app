@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 import sqlalchemy as sa
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, create_engine
 from sqlalchemy.engine import URL, make_url
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -114,6 +114,11 @@ def _quote_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def _is_duplicate_postgres_object_error(exc: DBAPIError) -> bool:
+    sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    return sqlstate in {"42710", "42P04", "23505"}
+
+
 def bootstrap_postgres_if_needed() -> None:
     if DATABASE_URL.startswith("sqlite"):
         return
@@ -143,25 +148,35 @@ def bootstrap_postgres_if_needed() -> None:
 
     try:
         with admin_engine.connect() as conn:
+            conn.execute(sa.text("SELECT pg_advisory_lock(2147483001)"))
+
             role_exists = conn.execute(
                 sa.text("SELECT 1 FROM pg_roles WHERE rolname = :username"),
                 {"username": target_user},
             ).scalar()
             if not role_exists:
-                conn.execute(
-                    sa.text(
-                        f"CREATE ROLE {_quote_ident(target_user)} LOGIN PASSWORD {_quote_literal(target_password)}"
+                try:
+                    conn.execute(
+                        sa.text(
+                            f"CREATE ROLE {_quote_ident(target_user)} LOGIN PASSWORD {_quote_literal(target_password)}"
+                        )
                     )
-                )
+                except DBAPIError as exc:
+                    if not _is_duplicate_postgres_object_error(exc):
+                        raise
 
             db_exists = conn.execute(
                 sa.text("SELECT 1 FROM pg_database WHERE datname = :dbname"),
                 {"dbname": target_database},
             ).scalar()
             if not db_exists:
-                conn.execute(
-                    sa.text(f"CREATE DATABASE {_quote_ident(target_database)} OWNER {_quote_ident(target_user)}")
-                )
+                try:
+                    conn.execute(
+                        sa.text(f"CREATE DATABASE {_quote_ident(target_database)} OWNER {_quote_ident(target_user)}")
+                    )
+                except DBAPIError as exc:
+                    if not _is_duplicate_postgres_object_error(exc):
+                        raise
     finally:
         admin_engine.dispose()
 
