@@ -1,0 +1,4 @@
+# Temporary accepts for backend image scan until upstream base/toolchain fixes land.
+CVE-2026-22184
+CVE-2026-23949
+CVE-2026-24049

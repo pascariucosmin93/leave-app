@@ -43,6 +43,7 @@ jobs:
             -v "$HOME/.cache/trivy:/root/.cache/" \
             docker.io/aquasec/trivy:0.65.0 \
             fs \
+            --ignorefile /workspace/.trivyignore \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             /workspace
@@ -54,9 +55,11 @@ jobs:
         run: |
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/workspace" \
             -v "$HOME/.cache/trivy:/root/.cache/" \
             docker.io/aquasec/trivy:0.65.0 \
             image \
+            --ignorefile /workspace/.trivyignore \
             --severity CRITICAL,HIGH \
             --exit-code 1 \
             leave-app-backend-scan
