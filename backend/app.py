@@ -91,6 +91,16 @@ def healthz():
     return jsonify({"status": "ok" if check_database_health() else "degraded"})
 
 
+@app.get("/api/healthz/live")
+def healthz_live():
+    return jsonify({"status": "ok"})
+
+
+@app.get("/api/healthz/ready")
+def healthz_ready():
+    return jsonify({"status": "ok" if check_database_health() else "degraded"})
+
+
 @app.post("/api/register")
 def register():
     payload = request.get_json(silent=True) or {}

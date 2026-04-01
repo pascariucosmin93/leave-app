@@ -162,3 +162,15 @@ def test_healthz(client):
     resp = client.get("/api/healthz")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "ok"
+
+
+def test_healthz_live(client):
+    resp = client.get("/api/healthz/live")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"
+
+
+def test_healthz_ready(client):
+    resp = client.get("/api/healthz/ready")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "ok"

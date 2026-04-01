@@ -99,7 +99,7 @@ def _engine_kwargs() -> dict:
         else:
             kwargs["connect_args"] = {"check_same_thread": False}
         return kwargs
-    return {"future": True, "pool_pre_ping": True}
+    return {"future": True, "pool_pre_ping": True, "connect_args": {"connect_timeout": 3}}
 
 
 engine = create_engine(DATABASE_URL, **_engine_kwargs())
@@ -129,7 +129,13 @@ def bootstrap_postgres_if_needed() -> None:
         port=int(os.getenv("BOOTSTRAP_POSTGRES_PORT", str(url.port or 5432))),
         database=os.getenv("BOOTSTRAP_POSTGRES_ADMIN_DB", "postgres"),
     )
-    admin_engine = create_engine(admin_url, future=True, pool_pre_ping=True, isolation_level="AUTOCOMMIT")
+    admin_engine = create_engine(
+        admin_url,
+        future=True,
+        pool_pre_ping=True,
+        isolation_level="AUTOCOMMIT",
+        connect_args={"connect_timeout": 3},
+    )
 
     try:
         with admin_engine.connect() as conn:
