@@ -110,6 +110,10 @@ def _quote_ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
+def _quote_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
 def bootstrap_postgres_if_needed() -> None:
     if DATABASE_URL.startswith("sqlite"):
         return
@@ -145,8 +149,9 @@ def bootstrap_postgres_if_needed() -> None:
             ).scalar()
             if not role_exists:
                 conn.execute(
-                    sa.text(f"CREATE ROLE {_quote_ident(target_user)} LOGIN PASSWORD :password"),
-                    {"password": target_password},
+                    sa.text(
+                        f"CREATE ROLE {_quote_ident(target_user)} LOGIN PASSWORD {_quote_literal(target_password)}"
+                    )
                 )
 
             db_exists = conn.execute(
