@@ -3,6 +3,7 @@ kind: CronJob
 metadata:
   name: ddos-detector-cleanup
   namespace: monitoring
+# checkov:skip=CKV_K8S_43: This image is published externally and current deployment flow tracks it by immutable tag outside this repository.
 spec:
   schedule: "*/5 * * * *"                # rulează la fiecare 5 minute
   concurrencyPolicy: Forbid              # împiedică suprapunerea joburilor
@@ -15,12 +16,42 @@ spec:
         spec:
           restartPolicy: OnFailure
           serviceAccountName: calico-admin
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
           imagePullSecrets:
             - name: regcred
           containers:
             - name: cleanup
               image: cosminregistrydev.azurecr.io/kube-security-clean-ip:1b262e
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: "64Mi"
+                limits:
+                  cpu: "150m"
+                  memory: "128Mi"
               env:
                 - name: DISCORD_WEBHOOK
-                  value: "https://discord.com/api/webhooks/1427216317789765663/JXiAca8FiNTGtRWhv62Me7TDptZKwBUYkmESlKBCC8FdHz0VIH2xg3HSX05JSMBrbfeB"
+                  valueFrom:
+                    secretKeyRef:
+                      name: kube-security-webhooks
+                      key: DISCORD_WEBHOOK
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}

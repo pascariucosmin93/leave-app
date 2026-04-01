@@ -3,6 +3,7 @@ kind: CronJob
 metadata:
   name: ddos-detector-loki
   namespace: monitoring
+# checkov:skip=CKV_K8S_43: This image is published externally and current deployment flow tracks it by immutable tag outside this repository.
 spec:
   schedule: "*/2 * * * *"
   concurrencyPolicy: Allow
@@ -14,12 +15,39 @@ spec:
       template:
         spec:
           serviceAccountName: calico-admin
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
           imagePullSecrets:
             - name: regcred
           containers:
             - name: ddos-detector
               image: cosminregistrydev.azurecr.io/kube-security-ddos:1b262e
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: Always
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "250m"
+                  memory: "256Mi"
+              env:
+                - name: DISCORD_WEBHOOK
+                  valueFrom:
+                    secretKeyRef:
+                      name: kube-security-webhooks
+                      key: DISCORD_WEBHOOK
               args:
                 - --loki-url=http://loki.monitoring.svc:3100
                 - --loki-namespace=ingress-nginx
@@ -27,5 +55,11 @@ spec:
                 - --threshold=500
                 - --filter-host=cosmin-employee-leave.bench.az.am-isd.com
                 - --apply
-                - --discord-webhook=https://discord.com/api/webhooks/1427216317789765663/JXiAca8FiNTGtRWhv62Me7TDptZKwBUYkmESlKBCC8FdHz0VIH2xg3HSX05JSMBrbfeB
+                - --discord-webhook=$(DISCORD_WEBHOOK)
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: tmp
+              emptyDir: {}
           restartPolicy: OnFailure

@@ -1,12 +1,10 @@
 name: Build and Prepare GitOps
 
 on:
+  push:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      image_version:
-        description: Image version in x.x.x format
-        required: true
-        default: "1.0.0"
 
 permissions:
   contents: read
@@ -25,13 +23,13 @@ jobs:
 
       - name: Validate version format
         run: |
-          IMAGE_VERSION="${{ github.event.inputs.image_version }}"
+          IMAGE_VERSION="${GITHUB_REF_NAME#v}"
           echo "$IMAGE_VERSION" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$'
 
       - name: Compute promote version
         id: versions
         run: |
-          IMAGE_VERSION="${{ github.event.inputs.image_version }}"
+          IMAGE_VERSION="${GITHUB_REF_NAME#v}"
           PROMOTE_VERSION="$(echo "$IMAGE_VERSION" | cut -d. -f1,2)"
           echo "image_version=$IMAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "promote_version=$PROMOTE_VERSION" >> "$GITHUB_OUTPUT"
@@ -96,4 +94,3 @@ jobs:
           git add k8s/chart/values.yaml
           git commit -m "chore(gitops): promote ${PROMOTE_VERSION} from image ${IMAGE_VERSION}"
           git push origin main
-
