@@ -8,7 +8,7 @@ This repository now follows the same split used in `gaz`: application code and C
 backend/             # Flask API
 frontend/            # Static UI served by NGINX
 tests/               # Pytest suite
-kube-security/       # Calico jobs and network policies
+kube-security/       # optional security manifests
 monitoring/          # Grafana and Prometheus assets
 argocd/              # Argo CD Application manifests
 .github/workflows/   # Build/test/promotion workflows
