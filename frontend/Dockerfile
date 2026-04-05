@@ -11,10 +11,11 @@ COPY public/ /usr/share/nginx/html/
 # Replace the default NGINX config with the custom one.
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
+COPY --chmod=755 docker-entrypoint.sh /docker-entrypoint.sh
+
 USER 101
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
 
+CMD ["/docker-entrypoint.sh"]
